@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة المصاريف الشهرية والراتب</title>
+    <!-- استيراد خط القاهرة (Cairo) وتجوال (Tajawal) لجمالية الواجهة العربية -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js للرسوم البيانية التفاعلية -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons للأيقونات العصرية -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Cairo', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* تخصيص شريط التمرير وإخفاء أسهم الإدخال الرقمي لمظهر أنظف */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+        
+        /* تنسيقات الطباعة */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background-color: white !important;
+                color: black !important;
+            }
+            .print-shadow-none {
+                box-shadow: none !important;
+                border: 1px solid #e5e7eb !important;
+            }
+            table {
+                font-size: 11px !important;
+            }
+            input {
+                border: none !important;
+                background: transparent !important;
+                padding: 0 !important;
+            }
+        }
+
+        /* شريط تمرير أنيق للجدول على الشاشات الصغيرة */
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+    <!-- شريط الإشعارات العائم (بديل alert) -->
+    <div id="toast-container" class="fixed bottom-5 left-5 z-50 flex flex-col gap-2 pointer-events-none no-print"></div>
+
+    <!-- نافذة التأكيد المخصصة (بديل confirm) -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4 no-print">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 transform transition-all">
+            <div class="flex items-center gap-3 text-amber-600 mb-3">
+                <div class="p-2.5 bg-amber-100 rounded-xl">
+                    <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                </div>
+                <h3 id="modal-title" class="text-lg font-bold text-slate-900">تأكيد الإجراء</h3>
+            </div>
+            <p id="modal-message" class="text-slate-600 text-sm leading-relaxed mb-6">هل أنت متأكد من رغبتك في المتابعة؟</p>
+            <div class="flex items-center justify-end gap-3">
+                <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors">
+                    إلغاء
+                </button>
+                <button id="modal-confirm-btn" class="px-5 py-2 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors">
+                    تأكيد
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة تخصيص العملة -->
+    <div id="currency-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4 no-print">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="coins" class="w-5 h-5 text-blue-600"></i>
+                    تخصيص العملة
+                </h3>
+                <button onclick="closeCurrencyModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1.5">اختر عملة جاهزة</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button type="button" onclick="selectPresetCurrency('د.ع')" class="p-2.5 text-sm font-semibold border border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 text-right flex justify-between items-center">
+                            <span>دينار عراقي</span>
+                            <span class="text-blue-600 font-bold">د.ع</span>
+                        </button>
+                        <button type="button" onclick="selectPresetCurrency('$')" class="p-2.5 text-sm font-semibold border border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 text-right flex justify-between items-center">
+                            <span>دولار أمريكي</span>
+                            <span class="text-blue-600 font-bold">$</span>
+                        </button>
+                        <button type="button" onclick="selectPresetCurrency('ر.س')" class="p-2.5 text-sm font-semibold border border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 text-right flex justify-between items-center">
+                            <span>ريال سعودي</span>
+                            <span class="text-blue-600 font-bold">ر.س</span>
+                        </button>
+                        <button type="button" onclick="selectPresetCurrency('د.إ')" class="p-2.5 text-sm font-semibold border border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 text-right flex justify-between items-center">
+                            <span>درهم إماراتي</span>
+                            <span class="text-blue-600 font-bold">د.إ</span>
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label for="custom-currency-input" class="block text-xs font-semibold text-slate-600 mb-1.5">أو اكتب رمز/اسم العملة المخصص</label>
+                    <input type="text" id="custom-currency-input" placeholder="مثال: ألف دينار، يورو، ج.م..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm">
+                </div>
+                <button onclick="saveCustomCurrency()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-sm transition-colors">
+                    حفظ العملة
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- الرأس العلوي (Header) -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <!-- العنوان والشعار -->
+                <div class="flex items-center gap-3.5">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+                        <i data-lucide="wallet" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">إدارة المصاريف الشهرية والراتب</h1>
+                            <span class="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                حفظ تلقائي
+                            </span>
+                        </div>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">متابعة دقيقة للراتب، التسوق، المولد، أقساط المدرسة، والإنترنت على مدار العام</p>
+                    </div>
+                </div>
+
+                <!-- أزرار الإجراءات السريعة -->
+                <div class="flex flex-wrap items-center gap-2 no-print">
+                    <!-- زر اختيار العملة -->
+                    <button onclick="openCurrencyModal()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors">
+                        <i data-lucide="coins" class="w-4 h-4 text-blue-600"></i>
+                        <span>العملة: <strong id="current-currency-badge" class="text-blue-700">د.ع</strong></span>
+                    </button>
+
+                    <!-- زر تصدير CSV / Excel -->
+                    <button onclick="exportToCSV()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition-colors">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                        <span>تصدير Excel</span>
+                    </button>
+
+                    <!-- زر الطباعة -->
+                    <button onclick="window.print()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs sm:text-sm font-semibold shadow-sm transition-colors">
+                        <i data-lucide="printer" class="w-4 h-4"></i>
+                        <span class="hidden sm:inline">طباعة التقرير</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- المحتوى الرئيسي -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- شريط الأدوات الذكية المساعدة -->
+        <div class="bg-gradient-to-l from-blue-50 via-indigo-50/60 to-white border border-blue-100 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
+            <div class="flex items-start sm:items-center gap-3">
+                <div class="p-2 bg-blue-100 text-blue-700 rounded-xl shrink-0">
+                    <i data-lucide="sparkles" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h2 class="text-sm font-bold text-slate-800">أدوات الإدخال السريع والتحكم</h2>
+                    <p class="text-xs text-slate-600 mt-0.5">يحتوي شهر <strong>كانون الثاني</strong> على مثال توضيحي (راتب 4,000 ومصاريف 2,750). يمكنك تعديله أو مسحه بضغطة زر.</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <button onclick="applySalaryToAll()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-colors" title="نسخ راتب أول شهر مدخل إلى باقي الأشهر">
+                    <i data-lucide="copy-check" class="w-4 h-4"></i>
+                    <span>تعميم الراتب على جميع الأشهر</span>
+                </button>
+                <button onclick="clearExampleData()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold transition-colors">
+                    <i data-lucide="eraser" class="w-4 h-4"></i>
+                    <span>مسح المثال التوضيحي</span>
+                </button>
+                <button onclick="resetToDefaultData()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-xs font-semibold transition-colors">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    <span>إعادة الافتراضي</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- القسم 1: بطاقات المؤشرات الرئيسية (KPIs) -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- إجمالي الرواتب السنوية -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm print-shadow-none relative overflow-hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-bold text-slate-500">إجمالي الرواتب السنوية</span>
+                    <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <i data-lucide="banknote" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-1.5">
+                    <span id="kpi-total-salary" class="text-2xl font-extrabold text-slate-900">0</span>
+                    <span class="currency-label text-xs font-bold text-slate-400">د.ع</span>
+                </div>
+                <p id="kpi-salary-months" class="text-xs text-slate-500 mt-2 flex items-center gap-1">
+                    <i data-lucide="calendar-check" class="w-3.5 h-3.5 text-blue-500"></i>
+                    <span>مسجل لـ 1 شهر</span>
+                </p>
+            </div>
+
+            <!-- إجمالي المصاريف السنوية -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm print-shadow-none relative overflow-hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-bold text-slate-500">إجمالي المصاريف السنوية</span>
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-1.5">
+                    <span id="kpi-total-expenses" class="text-2xl font-extrabold text-slate-900">0</span>
+                    <span class="currency-label text-xs font-bold text-slate-400">د.ع</span>
+                </div>
+                <div class="mt-2 flex items-center justify-between text-xs">
+                    <span class="text-slate-500">نسبة الاستهلاك من الراتب:</span>
+                    <span id="kpi-expense-ratio" class="font-bold text-amber-600">0%</span>
+                </div>
+            </div>
+
+            <!-- صافي المتبقي / الادخار السنوي -->
+            <div id="kpi-balance-card" class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm print-shadow-none relative overflow-hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-bold text-slate-500">المتبقي السنوي (الفائض / العجز)</span>
+                    <div id="kpi-balance-icon-bg" class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <i data-lucide="piggy-bank" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-1.5">
+                    <span id="kpi-net-balance" class="text-2xl font-extrabold text-emerald-600">0</span>
+                    <span class="currency-label text-xs font-bold text-slate-400">د.ع</span>
+                </div>
+                <p id="kpi-balance-status" class="text-xs text-emerald-600 font-semibold mt-2">
+                    وضع مالي ممتاز (فائض)
+                </p>
+            </div>
+
+            <!-- أعلى مصروف شهري + متوسط المصروف -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm print-shadow-none relative overflow-hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold text-slate-500">متوسط المصروف الشهري</span>
+                    <div class="flex items-center bg-slate-100 rounded-lg p-0.5 text-[10px] font-bold no-print">
+                        <button id="avg-mode-active" onclick="setAvgMode('active')" class="px-2 py-0.5 rounded-md bg-white text-blue-600 shadow-sm transition-all" title="المتوسط مقسوماً على الأشهر التي تحتوي مصاريف فقط">الفعلي</button>
+                        <button id="avg-mode-12" onclick="setAvgMode('12')" class="px-2 py-0.5 rounded-md text-slate-500 hover:text-slate-800 transition-all" title="المعادلة القياسية في الملف: المجموع ÷ 12">÷ 12</button>
+                    </div>
+                </div>
+                <div class="flex items-baseline gap-1.5">
+                    <span id="kpi-avg-expense" class="text-2xl font-extrabold text-slate-900">0</span>
+                    <span class="currency-label text-xs font-bold text-slate-400">د.ع</span>
+                </div>
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span class="text-slate-500">أعلى مصروف:</span>
+                    <span id="kpi-max-month" class="font-bold text-rose-600 truncate max-w-[140px]">كانون الثاني (2,750)</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- القسم 2: الجدول الرئيسي التفاعلي للمصاريف الشهرية -->
+        <section class="bg-white rounded-2xl border border-slate-200/80 shadow-sm print-shadow-none overflow-hidden">
+            <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i data-lucide="table-2" class="w-5 h-5 text-blue-600"></i>
+                        جدول المصاريف والرواتب الشهرية (12 شهراً)
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-0.5">انقر على أي خلية لتعديل المبلغ أو الملاحظات؛ يتم تحديث الإجماليات والمتبقي والرسوم البيانية فوراً.</p>
+                </div>
+                <div class="flex items-center gap-3 text-xs">
+                    <span class="inline-flex items-center gap-1.5 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg font-semibold">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span> فائض
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg font-semibold">
+                        <span class="w-2 h-2 rounded-full bg-rose-500"></span> عجز
+                    </span>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-right border-collapse min-w-[980px]">
+                    <thead>
+                        <tr class="bg-slate-800 text-white text-xs sm:text-sm font-bold">
+                            <th class="py-3.5 px-4 border-l border-slate-700 w-32 sticky right-0 bg-slate-800 z-10">الشهر</th>
+                            <th class="py-3.5 px-3 border-l border-slate-700 bg-blue-900/60 w-36">
+                                <div class="flex items-center gap-1.5">
+                                    <i data-lucide="wallet" class="w-3.5 h-3.5 text-blue-300"></i>
+                                    <span>مبلغ الراتب</span>
+                                </div>
+                            </th>
+                            <th class="py-3.5 px-3 border-l border-slate-700 w-32">
+                                <div class="flex items-center gap-1.5">
+                                    <i data-lucide="shopping-cart" class="w-3.5 h-3.5 text-amber-300"></i>
+                                    <span>تسوق</span>
+                                </div>
+                            </th>
+                            <th class="py-3.5 px-3 border-l border-slate-700 w-28">
+                                <div class="flex items-center gap-1.5">
+                                    <i data-lucide="zap" class="w-3.5 h-3.5 text-yellow-300"></i>
+                                    <span>مولد</span>
+                                </div>
+                            </th>
+                            <th class="py-3.5 px-3 border-l border-slate-700 w-32">
+                                <div class="flex items-center gap-1.5">
+                                    <i data-lucide="graduation-cap" class="w-3.5 h-3.5 text-purple-300"></i>
+                                    <span>أقساط المدرسة</span>
+                                </div>
+                            </th>
+                            <th class="py-3.5 px-3 border-l border-slate-700 w-28">
+                                <div class="flex items-center gap-1.5">
+                                    <i data-lucide="wifi" class="w-3.5 h-3.5 text-cyan-300"></i>
+                                    <span>إنترنت</span>
+                                </div>
+                            </th>
+                            <th class="py-3.5 px-3 border-l border-slate-700 bg-slate-900/70 w-36">إجمالي المصاريف</th>
+                            <th class="py-3.5 px-3 border-l border-slate-700 bg-slate-900/70 w-36">المتبقي من الراتب</th>
+                            <th class="py-3.5 px-4 min-w-[180px]">ملاحظات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenses-table-body" class="divide-y divide-slate-200 text-sm">
+                        <!-- يتم توليد الصفوف الـ 12 ديناميكياً عبر JavaScript -->
+                    </tbody>
+                    <tfoot class="bg-slate-100 font-extrabold text-slate-900 border-t-2 border-slate-300 text-xs sm:text-sm">
+                        <tr>
+                            <td class="py-4 px-4 border-l border-slate-200 sticky right-0 bg-slate-100 z-10 text-blue-900">المجموع السنوي</td>
+                            <td id="foot-salary" class="py-4 px-3 border-l border-slate-200 text-blue-700 bg-blue-50/70">0</td>
+                            <td id="foot-shopping" class="py-4 px-3 border-l border-slate-200">0</td>
+                            <td id="foot-generator" class="py-4 px-3 border-l border-slate-200">0</td>
+                            <td id="foot-school" class="py-4 px-3 border-l border-slate-200">0</td>
+                            <td id="foot-internet" class="py-4 px-3 border-l border-slate-200">0</td>
+                            <td id="foot-total-expenses" class="py-4 px-3 border-l border-slate-200 text-amber-800 bg-amber-50/70">0</td>
+                            <td id="foot-remaining" class="py-4 px-3 border-l border-slate-200">0</td>
+                            <td class="py-4 px-4 text-xs font-normal text-slate-500">إجمالي 12 شهراً</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+
+        <!-- القسم 3: ملخص البنود والرسوم البيانية التفاعلية -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- بطاقة تفصيل المصاريف حسب البند (مطابقة لملخص Excel) -->
+            <div class="lg:col-span-4 bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm print-shadow-none flex flex-col justify-between">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 flex items-center gap-2 mb-1">
+                        <i data-lucide="pie-chart" class="w-5 h-5 text-indigo-600"></i>
+                        ملخص المصاريف السنوية حسب البند
+                    </h3>
+                    <p class="text-xs text-slate-500 mb-5">إجمالي كل فئة ونسبتها من إجمالي المصاريف السنوية</p>
+
+                    <div class="space-y-4">
+                        <!-- بند التسوق -->
+                        <div>
+                            <div class="flex justify-between items-center text-sm mb-1.5">
+                                <span class="font-bold text-slate-700 flex items-center gap-2">
+                                    <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+                                    إجمالي التسوق
+                                </span>
+                                <div class="text-left">
+                                    <span id="cat-shopping-val" class="font-extrabold text-slate-900">1,500</span>
+                                    <span id="cat-shopping-pct" class="text-xs font-bold text-blue-600 mr-1">(54.5%)</span>
+                                </div>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                <div id="cat-shopping-bar" class="bg-blue-500 h-2.5 rounded-full transition-all duration-500" style="width: 54.5%"></div>
+                            </div>
+                        </div>
+
+                        <!-- بند أقساط المدرسة -->
+                        <div>
+                            <div class="flex justify-between items-center text-sm mb-1.5">
+                                <span class="font-bold text-slate-700 flex items-center gap-2">
+                                    <span class="w-3 h-3 rounded-full bg-purple-500"></span>
+                                    إجمالي أقساط المدرسة
+                                </span>
+                                <div class="text-left">
+                                    <span id="cat-school-val" class="font-extrabold text-slate-900">800</span>
+                                    <span id="cat-school-pct" class="text-xs font-bold text-purple-600 mr-1">(29.1%)</span>
+                                </div>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                <div id="cat-school-bar" class="bg-purple-500 h-2.5 rounded-full transition-all duration-500" style="width: 29.1%"></div>
+                            </div>
+                        </div>
+
+                        <!-- بند المولد -->
+                        <div>
+                            <div class="flex justify-between items-center text-sm mb-1.5">
+                                <span class="font-bold text-slate-700 flex items-center gap-2">
+                                    <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+                                    إجمالي المولد
+                                </span>
+                                <div class="text-left">
+                                    <span id="cat-generator-val" class="font-extrabold text-slate-900">300</span>
+                                    <span id="cat-generator-pct" class="text-xs font-bold text-amber-600 mr-1">(10.9%)</span>
+                                </div>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                <div id="cat-generator-bar" class="bg-amber-500 h-2.5 rounded-full transition-all duration-500" style="width: 10.9%"></div>
+                            </div>
+                        </div>
+
+                        <!-- بند الإنترنت -->
+                        <div>
+                            <div class="flex justify-between items-center text-sm mb-1.5">
+                                <span class="font-bold text-slate-700 flex items-center gap-2">
+                                    <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+                                    إجمالي الإنترنت
+                                </span>
+                                <div class="text-left">
+                                    <span id="cat-internet-val" class="font-extrabold text-slate-900">150</span>
+                                    <span id="cat-internet-pct" class="text-xs font-bold text-emerald-600 mr-1">(5.5%)</span>
+                                </div>
+                            </div>
+                            <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                <div id="cat-internet-bar" class="bg-emerald-500 h-2.5 rounded-full transition-all duration-500" style="width: 5.5%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- الرسم الدائري الصغير لتوزيع الفئات -->
+                <div class="mt-6 pt-4 border-t border-slate-100">
+                    <div class="h-44 relative flex items-center justify-center">
+                        <canvas id="categoriesDonutChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- الرسم البياني الرئيسي: مقارنة الراتب vs المصاريف vs المتبقي -->
+            <div class="lg:col-span-8 bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm print-shadow-none flex flex-col">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="bar-chart-3" class="w-5 h-5 text-blue-600"></i>
+                            التحليل الشهري: الراتب مقابل المصاريف والمتبقي
+                        </h3>
+                        <p class="text-xs text-slate-500 mt-0.5">مقارنة بصرية تساعدك على اكتشاف الأشهر ذات الإنفاق المرتفع ومراقبة الادخار</p>
+                    </div>
+                </div>
+                <div class="flex-1 min-h-[300px] w-full relative">
+                    <canvas id="monthlyComparisonChart"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- التذييل (Footer) -->
+    <footer class="bg-white border-t border-slate-200 mt-10 py-4 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+            <p>تم التصميم والتطوير بناءً على هيكل ملف <strong>مصاريف.xlsx</strong> مع إضافة إدارة الراتب والادخار.</p>
+            <p>جميع البيانات تُحفظ محلياً في متصفحك لضمان الخصوصية الكاملة.</p>
+        </div>
+    </footer>
+
+    <!-- المنطق البرمجي المتكامل للتطبيق -->
+    <script>
+        // ==========================================
+        // 1. الثوابت والبيانات الافتراضية (مطابقة لملف Excel)
+        // ==========================================
+        const STORAGE_KEY = 'arabic_monthly_expenses_v1';
+        const CURRENCY_KEY = 'arabic_expenses_currency_v1';
+
+        const MONTHS_LIST = [
+            'كانون الثاني',
+            'شباط',
+            'آذار',
+            'نيسان',
+            'أيار',
+            'حزيران',
+            'تموز',
+            'آب',
+            'أيلول',
+            'تشرين الأول',
+            'تشرين الثاني',
+            'كانون الأول'
+        ];
+
+        // إنشاء البيانات الافتراضية المطابقة تماماً لملف Excel المرفق + راتب توضيحي لكانون الثاني
+        function getDefaultData() {
+            return MONTHS_LIST.map((month, index) => {
+                if (index === 0) {
+                    return {
+                        month: month,
+                        salary: 4000,      // راتب توضيحي قابل للتعديل أو المسح
+                        shopping: 1500,    // مطابقة لخلية C4
+                        generator: 300,    // مطابقة لخلية D4
+                        school: 800,       // مطابقة لخلية E4
+                        internet: 150,     // مطابقة لخلية F4
+                        notes: 'مثال توضيحي', // مطابقة لخلية H4
+                        isExample: true
+                    };
+                }
+                return {
+                    month: month,
+                    salary: 0,
+                    shopping: 0,
+                    generator: 0,
+                    school: 0,
+                    internet: 0,
+                    notes: '',
+                    isExample: false
+                };
+            });
+        }
+
+        // حالة التطبيق
+        let expensesData = [];
+        let currentCurrency = 'د.ع';
+        let avgCalculationMode = 'active'; // 'active' (الأشهر النشطة) أو '12' (قسمة على 12 كما في الملف)
+        let comparisonChart = null;
+        let donutChart = null;
+
+        // ==========================================
+        // 2. إدارة التخزين المحلي (LocalStorage)
+        // ==========================================
+        function loadState() {
+            try {
+                const savedData = localStorage.getItem(STORAGE_KEY);
+                const savedCurrency = localStorage.getItem(CURRENCY_KEY);
+
+                if (savedData) {
+                    const parsed = JSON.parse(savedData);
+                    if (Array.isArray(parsed) && parsed.length === 12) {
+                        expensesData = parsed;
+                    } else {
+                        expensesData = getDefaultData();
+                    }
+                } else {
+                    expensesData = getDefaultData();
+                }
+
+                if (savedCurrency) {
+                    currentCurrency = savedCurrency;
+                }
+            } catch (error) {
+                console.error('خطأ في قراءة البيانات المحفوظة:', error);
+                expensesData = getDefaultData();
+            }
+        }
+
+        function saveState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(expensesData));
+                localStorage.setItem(CURRENCY_KEY, currentCurrency);
+            } catch (error) {
+                console.error('خطأ في حفظ البيانات:', error);
+                showToast('تعذر حفظ البيانات في المتصفح', 'error');
+            }
+        }
+
+        // ==========================================
+        // 3. تنسيق الأرقام والعملات
+        // ==========================================
+        function formatNumber(num) {
+            if (isNaN(num) || num === null) return '0';
+            // تنسيق الأرقام بفواصل الآلاف مع دعم الكسور العشرية عند الحاجة
+            return Number(num).toLocaleString('en-US', {
+                maximumFractionDigits: 2
+            });
+        }
+
+        function updateCurrencyUI() {
+            document.getElementById('current-currency-badge').textContent = currentCurrency;
+            document.querySelectorAll('.currency-label').forEach(el => {
+                el.textContent = currentCurrency;
+            });
+        }
+
+        // ==========================================
+        // 4. بناء وتحديث الجدول الرئيسي
+        // ==========================================
+        function renderTable() {
+            const tbody = document.getElementById('expenses-table-body');
+            tbody.innerHTML = '';
+
+            expensesData.forEach((row, idx) => {
+                const rowExpenses = (Number(row.shopping) || 0) +
+                                    (Number(row.generator) || 0) +
+                                    (Number(row.school) || 0) +
+                                    (Number(row.internet) || 0);
+                const rowSalary = Number(row.salary) || 0;
+                const rowRemaining = rowSalary - rowExpenses;
+
+                // تحديد لون خلية المتبقي (أخضر للفائض، أحمر للعجز، رمادي للصفر)
+                let remainingClass = 'text-slate-500 bg-slate-50/50';
+                let remainingPrefix = '';
+                if (rowSalary > 0 || rowExpenses > 0) {
+                    if (rowRemaining > 0) {
+                        remainingClass = 'text-emerald-700 bg-emerald-50/70 font-bold';
+                        remainingPrefix = '+';
+                    } else if (rowRemaining < 0) {
+                        remainingClass = 'text-rose-700 bg-rose-50/80 font-bold';
+                    } else {
+                        remainingClass = 'text-slate-700 bg-slate-100/70 font-bold';
+                    }
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = `hover:bg-blue-50/30 transition-colors ${row.isExample ? 'bg-amber-50/20' : 'bg-white'}`;
+
+                tr.innerHTML = `
+                    <!-- اسم الشهر -->
+                    <td class="py-2.5 px-4 border-l border-slate-200 font-bold text-slate-800 sticky right-0 ${row.isExample ? 'bg-amber-50/90' : 'bg-white'} z-10">
+                        <div class="flex items-center justify-between gap-1">
+                            <span>${row.month}</span>
+                            ${row.isExample ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold no-print" title="بيانات مثال توضيحي">مثال</span>' : ''}
+                        </div>
+                    </td>
+
+                    <!-- مبلغ الراتب -->
+                    <td class="p-1.5 border-l border-slate-200 bg-blue-50/20">
+                        <input type="number" min="0" step="any"
+                            value="${row.salary || ''}"
+                            placeholder="0"
+                            data-index="${idx}" data-field="salary"
+                            onchange="handleCellChange(this)"
+                            onfocus="this.select()"
+                            class="w-full px-2.5 py-1.5 rounded-lg border border-transparent hover:border-blue-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none text-blue-800 font-bold text-sm transition-all bg-transparent">
+                    </td>
+
+                    <!-- تسوق -->
+                    <td class="p-1.5 border-l border-slate-200">
+                        <input type="number" min="0" step="any"
+                            value="${row.shopping || ''}"
+                            placeholder="0"
+                            data-index="${idx}" data-field="shopping"
+                            onchange="handleCellChange(this)"
+                            onfocus="this.select()"
+                            class="w-full px-2.5 py-1.5 rounded-lg border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none text-slate-700 font-medium text-sm transition-all bg-transparent">
+                    </td>
+
+                    <!-- مولد -->
+                    <td class="p-1.5 border-l border-slate-200">
+                        <input type="number" min="0" step="any"
+                            value="${row.generator || ''}"
+                            placeholder="0"
+                            data-index="${idx}" data-field="generator"
+                            onchange="handleCellChange(this)"
+                            onfocus="this.select()"
+                            class="w-full px-2.5 py-1.5 rounded-lg border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none text-slate-700 font-medium text-sm transition-all bg-transparent">
+                    </td>
+
+                    <!-- أقساط المدرسة -->
+                    <td class="p-1.5 border-l border-slate-200">
+                        <input type="number" min="0" step="any"
+                            value="${row.school || ''}"
+                            placeholder="0"
+                            data-index="${idx}" data-field="school"
+                            onchange="handleCellChange(this)"
+                            onfocus="this.select()"
+                            class="w-full px-2.5 py-1.5 rounded-lg border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none text-slate-700 font-medium text-sm transition-all bg-transparent">
+                    </td>
+
+                    <!-- إنترنت -->
+                    <td class="p-1.5 border-l border-slate-200">
+                        <input type="number" min="0" step="any"
+                            value="${row.internet || ''}"
+                            placeholder="0"
+                            data-index="${idx}" data-field="internet"
+                            onchange="handleCellChange(this)"
+                            onfocus="this.select()"
+                            class="w-full px-2.5 py-1.5 rounded-lg border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none text-slate-700 font-medium text-sm transition-all bg-transparent">
+                    </td>
+
+                    <!-- إجمالي المصاريف الشهرية (محسوب تلقائياً) -->
+                    <td id="row-total-${idx}" class="py-2.5 px-3 border-l border-slate-200 font-bold text-slate-900 bg-slate-50/70">
+                        ${formatNumber(rowExpenses)}
+                    </td>
+
+                    <!-- المتبقي من الراتب (محسوب تلقائياً) -->
+                    <td id="row-rem-${idx}" class="py-2.5 px-3 border-l border-slate-200 ${remainingClass}">
+                        ${remainingPrefix}${formatNumber(rowRemaining)}
+                    </td>
+
+                    <!-- ملاحظات -->
+                    <td class="p-1.5">
+                        <input type="text"
+                            value="${escapeHTML(row.notes || '')}"
+                            placeholder="أضف ملاحظة..."
+                            data-index="${idx}" data-field="notes"
+                            onchange="handleCellChange(this)"
+                            class="w-full px-2.5 py-1.5 rounded-lg border border-transparent hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none text-slate-600 text-xs sm:text-sm transition-all bg-transparent">
+                    </td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            recalculateAll();
+        }
+
+        // معالجة تعديل أي خلية في الجدول
+        function handleCellChange(input) {
+            const index = parseInt(input.dataset.index, 10);
+            const field = input.dataset.field;
+
+            if (field === 'notes') {
+                expensesData[index].notes = input.value.trim();
+            } else {
+                const val = parseFloat(input.value);
+                expensesData[index][field] = isNaN(val) || val < 0 ? 0 : val;
+                input.value = expensesData[index][field] === 0 ? '' : expensesData[index][field];
+            }
+
+            // إزالة وسم المثال التوضيحي عند قيام المستخدم بتعديل الصف
+            if (expensesData[index].isExample) {
+                expensesData[index].isExample = false;
+                renderTable(); // إعادة رسم لإزالة شارة "مثال"
+            } else {
+                updateSingleRowCalculations(index);
+                recalculateAll();
+            }
+
+            saveState();
+        }
+
+        // تحديث حسابات صف واحد بسرعة دون إعادة بناء الجدول بالكامل
+        function updateSingleRowCalculations(idx) {
+            const row = expensesData[idx];
+            const rowExpenses = (Number(row.shopping) || 0) +
+                                (Number(row.generator) || 0) +
+                                (Number(row.school) || 0) +
+                                (Number(row.internet) || 0);
+            const rowSalary = Number(row.salary) || 0;
+            const rowRemaining = rowSalary - rowExpenses;
+
+            const totalCell = document.getElementById(`row-total-${idx}`);
+            const remCell = document.getElementById(`row-rem-${idx}`);
+
+            if (totalCell) totalCell.textContent = formatNumber(rowExpenses);
+            if (remCell) {
+                remCell.className = 'py-2.5 px-3 border-l border-slate-200 ';
+                let prefix = '';
+                if (rowSalary > 0 || rowExpenses > 0) {
+                    if (rowRemaining > 0) {
+                        remCell.className += 'text-emerald-700 bg-emerald-50/70 font-bold';
+                        prefix = '+';
+                    } else if (rowRemaining < 0) {
+                        remCell.className += 'text-rose-700 bg-rose-50/80 font-bold';
+                    } else {
+                        remCell.className += 'text-slate-700 bg-slate-100/70 font-bold';
+                    }
+                } else {
+                    remCell.className += 'text-slate-500 bg-slate-50/50';
+                }
+                remCell.textContent = `${prefix}${formatNumber(rowRemaining)}`;
+            }
+        }
+
+        // ==========================================
+        // 5. الحسابات الإجمالية، المؤشرات، والرسوم البيانية
+        // ==========================================
+        function recalculateAll() {
+            let totalSalary = 0;
+            let totalShopping = 0;
+            let totalGenerator = 0;
+            let totalSchool = 0;
+            let totalInternet = 0;
+            let totalExpenses = 0;
+
+            let activeExpenseMonths = 0;
+            let activeSalaryMonths = 0;
+
+            let maxExpense = -1;
+            let maxExpenseMonth = 'لا يوجد';
+
+            const monthlySalaries = [];
+            const monthlyExpenses = [];
+            const monthlyRemaining = [];
+
+            expensesData.forEach(row => {
+                const sal = Number(row.salary) || 0;
+                const shop = Number(row.shopping) || 0;
+                const gen = Number(row.generator) || 0;
+                const sch = Number(row.school) || 0;
+                const net = Number(row.internet) || 0;
+                const exp = shop + gen + sch + net;
+                const rem = sal - exp;
+
+                totalSalary += sal;
+                totalShopping += shop;
+                totalGenerator += gen;
+                totalSchool += sch;
+                totalInternet += net;
+                totalExpenses += exp;
+
+                if (sal > 0) activeSalaryMonths++;
+                if (exp > 0) activeExpenseMonths++;
+
+                if (exp > maxExpense && exp > 0) {
+                    maxExpense = exp;
+                    maxExpenseMonth = row.month;
+                }
+
+                monthlySalaries.push(sal);
+                monthlyExpenses.push(exp);
+                monthlyRemaining.push(rem);
+            });
+
+            const netBalance = totalSalary - totalExpenses;
+
+            // 1. تحديث تذييل الجدول (المجموع السنوي)
+            document.getElementById('foot-salary').textContent = formatNumber(totalSalary);
+            document.getElementById('foot-shopping').textContent = formatNumber(totalShopping);
+            document.getElementById('foot-generator').textContent = formatNumber(totalGenerator);
+            document.getElementById('foot-school').textContent = formatNumber(totalSchool);
+            document.getElementById('foot-internet').textContent = formatNumber(totalInternet);
+            document.getElementById('foot-total-expenses').textContent = formatNumber(totalExpenses);
+
+            const footRemEl = document.getElementById('foot-remaining');
+            footRemEl.textContent = (netBalance > 0 ? '+' : '') + formatNumber(netBalance);
+            footRemEl.className = 'py-4 px-3 border-l border-slate-200 ' + (
+                netBalance > 0 ? 'text-emerald-700 bg-emerald-50/80' :
+                netBalance < 0 ? 'text-rose-700 bg-rose-50/80' : 'text-slate-800'
+            );
+
+            // 2. تحديث بطاقات المؤشرات الرئيسية (KPIs)
+            document.getElementById('kpi-total-salary').textContent = formatNumber(totalSalary);
+            document.getElementById('kpi-salary-months').innerHTML = `
+                <i data-lucide="calendar-check" class="w-3.5 h-3.5 text-blue-500"></i>
+                <span>مسجل لـ ${activeSalaryMonths} ${activeSalaryMonths === 1 || activeSalaryMonths > 10 ? 'شهر' : 'أشهر'}</span>
+            `;
+
+            document.getElementById('kpi-total-expenses').textContent = formatNumber(totalExpenses);
+            const expenseRatio = totalSalary > 0 ? ((totalExpenses / totalSalary) * 100).toFixed(1) : 0;
+            const ratioEl = document.getElementById('kpi-expense-ratio');
+            ratioEl.textContent = `${expenseRatio}%`;
+            ratioEl.className = `font-bold ${expenseRatio > 100 ? 'text-rose-600' : expenseRatio > 80 ? 'text-amber-600' : 'text-emerald-600'}`;
+
+            // بطاقة المتبقي السنوي
+            const netBalanceEl = document.getElementById('kpi-net-balance');
+            const balanceStatusEl = document.getElementById('kpi-balance-status');
+            const balanceIconBg = document.getElementById('kpi-balance-icon-bg');
+
+            netBalanceEl.textContent = (netBalance > 0 ? '+' : '') + formatNumber(netBalance);
+            if (netBalance > 0) {
+                netBalanceEl.className = 'text-2xl font-extrabold text-emerald-600';
+                balanceStatusEl.textContent = 'وضع مالي إيجابي (فائض ادخار)';
+                balanceStatusEl.className = 'text-xs text-emerald-600 font-semibold mt-2';
+                balanceIconBg.className = 'w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center';
+            } else if (netBalance < 0) {
+                netBalanceEl.className = 'text-2xl font-extrabold text-rose-600';
+                balanceStatusEl.textContent = 'تنبيه: المصاريف تتجاوز الرواتب (عجز)';
+                balanceStatusEl.className = 'text-xs text-rose-600 font-semibold mt-2';
+                balanceIconBg.className = 'w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center';
+            } else {
+                netBalanceEl.className = 'text-2xl font-extrabold text-slate-700';
+                balanceStatusEl.textContent = 'متوازن (الراتب يساوي المصاريف)';
+                balanceStatusEl.className = 'text-xs text-slate-500 font-semibold mt-2';
+                balanceIconBg.className = 'w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center';
+            }
+
+            // متوسط المصروف الشهري وأعلى شهر
+            let avgExpense = 0;
+            if (avgCalculationMode === '12') {
+                avgExpense = totalExpenses / 12;
+            } else {
+                avgExpense = activeExpenseMonths > 0 ? (totalExpenses / activeExpenseMonths) : 0;
+            }
+            document.getElementById('kpi-avg-expense').textContent = formatNumber(avgExpense);
+
+            const maxMonthEl = document.getElementById('kpi-max-month');
+            if (maxExpense > 0) {
+                maxMonthEl.textContent = `${maxExpenseMonth} (${formatNumber(maxExpense)})`;
+            } else {
+                maxMonthEl.textContent = 'لا توجد مصاريف';
+            }
+
+            // 3. تحديث ملخص الفئات ونسبها المئوية
+            updateCategorySummary('shopping', totalShopping, totalExpenses);
+            updateCategorySummary('school', totalSchool, totalExpenses);
+            updateCategorySummary('generator', totalGenerator, totalExpenses);
+            updateCategorySummary('internet', totalInternet, totalExpenses);
+
+            // 4. تحديث الرسوم البيانية
+            updateCharts(monthlySalaries, monthlyExpenses, monthlyRemaining, [
+                totalShopping,
+                totalSchool,
+                totalGenerator,
+                totalInternet
+            ]);
+
+            // إعادة تفعيل أيقونات Lucide المحدثة
+            lucide.createIcons();
+        }
+
+        function updateCategorySummary(catKey, amount, total) {
+            const pct = total > 0 ? ((amount / total) * 100).toFixed(1) : 0;
+            document.getElementById(`cat-${catKey}-val`).textContent = `${formatNumber(amount)} ${currentCurrency}`;
+            document.getElementById(`cat-${catKey}-pct`).textContent = `(${pct}%)`;
+            document.getElementById(`cat-${catKey}-bar`).style.width = `${pct}%`;
+        }
+
+        function setAvgMode(mode) {
+            avgCalculationMode = mode;
+            const btnActive = document.getElementById('avg-mode-active');
+            const btn12 = document.getElementById('avg-mode-12');
+
+            if (mode === 'active') {
+                btnActive.className = 'px-2 py-0.5 rounded-md bg-white text-blue-600 shadow-sm transition-all';
+                btn12.className = 'px-2 py-0.5 rounded-md text-slate-500 hover:text-slate-800 transition-all';
+            } else {
+                btn12.className = 'px-2 py-0.5 rounded-md bg-white text-blue-600 shadow-sm transition-all';
+                btnActive.className = 'px-2 py-0.5 rounded-md text-slate-500 hover:text-slate-800 transition-all';
+            }
+            recalculateAll();
+        }
+
+        // ==========================================
+        // 6. الرسوم البيانية التفاعلية (Chart.js)
+        // ==========================================
+        function initCharts() {
+            Chart.defaults.font.family = "'Cairo', sans-serif";
+            Chart.defaults.color = '#64748b';
+
+            // الرسم البياني الشريطي والخطي للمقارنة الشهرية
+            const ctxComp = document.getElementById('monthlyComparisonChart').getContext('2d');
+            comparisonChart = new Chart(ctxComp, {
+                type: 'bar',
+                data: {
+                    labels: MONTHS_LIST,
+                    datasets: [
+                        {
+                            label: 'مبلغ الراتب',
+                            data: [],
+                            backgroundColor: 'rgba(37, 99, 235, 0.85)',
+                            borderColor: 'rgb(37, 99, 235)',
+                            borderWidth: 1,
+                            borderRadius: 6,
+                            order: 2
+                        },
+                        {
+                            label: 'إجمالي المصاريف',
+                            data: [],
+                            backgroundColor: 'rgba(245, 158, 11, 0.85)',
+                            borderColor: 'rgb(245, 158, 11)',
+                            borderWidth: 1,
+                            borderRadius: 6,
+                            order: 3
+                        },
+                        {
+                            label: 'المتبقي (الفائض/العجز)',
+                            data: [],
+                            type: 'line',
+                            borderColor: 'rgb(16, 185, 129)',
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                            borderWidth: 3,
+                            pointBackgroundColor: 'rgb(16, 185, 129)',
+                            pointRadius: 4,
+                            tension: 0.3,
+                            fill: false,
+                            order: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                                font: { weight: 'bold', size: 12 }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            padding: 12,
+                            titleFont: { size: 13, weight: 'bold' },
+                            bodyFont: { size: 12 },
+                            callbacks: {
+                                label: function(context) {
+                                    return ` ${context.dataset.label}: ${formatNumber(context.parsed.y)} ${currentCurrency}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' },
+                            ticks: {
+                                callback: function(value) {
+                                    return formatNumber(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // الرسم الدائري لتوزيع الفئات
+            const ctxDonut = document.getElementById('categoriesDonutChart').getContext('2d');
+            donutChart = new Chart(ctxDonut, {
+                type: 'doughnut',
+                data: {
+                    labels: ['تسوق', 'أقساط المدرسة', 'مولد', 'إنترنت'],
+                    datasets: [{
+                        data: [1500, 800, 300, 150],
+                        backgroundColor: [
+                            '#3b82f6', // أزرق للتسوق
+                            '#a855f7', // بنفسجي للمدرسة
+                            '#f59e0b', // برتقالي للمولد
+                            '#10b981'  // أخضر للإنترنت
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff',
+                        hoverOffset: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: {
+                            position: 'left',
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 8,
+                                font: { size: 11, weight: 'bold' }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                    return ` ${context.label}: ${formatNumber(val)} ${currentCurrency} (${pct}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCharts(salaries, expenses, remaining, categoryTotals) {
+            if (comparisonChart) {
+                comparisonChart.data.datasets[0].data = salaries;
+                comparisonChart.data.datasets[1].data = expenses;
+                comparisonChart.data.datasets[2].data = remaining;
+                comparisonChart.update();
+            }
+
+            if (donutChart) {
+                const hasAnyExpense = categoryTotals.some(v => v > 0);
+                donutChart.data.datasets[0].data = hasAnyExpense ? categoryTotals : [0, 0, 0, 0];
+                donutChart.update();
+            }
+        }
+
+        // ==========================================
+        // 7. الأدوات الذكية (تعميم الراتب، مسح المثال، التصدير)
+        // ==========================================
+        function applySalaryToAll() {
+            // البحث عن أول راتب مدخل > 0
+            const firstSalaryRow = expensesData.find(r => Number(r.salary) > 0);
+            if (!firstSalaryRow) {
+                showToast('يرجى إدخال مبلغ الراتب في شهر واحد على الأقل أولاً (مثلاً كانون الثاني).', 'warning');
+                return;
+            }
+
+            const targetSalary = Number(firstSalaryRow.salary);
+            showConfirmModal(
+                'تعميم الراتب الشهري',
+                `هل تريد تطبيق مبلغ الراتب (${formatNumber(targetSalary)} ${currentCurrency}) على جميع الأشهر الـ 12؟`,
+                () => {
+                    expensesData.forEach(row => {
+                        row.salary = targetSalary;
+                    });
+                    saveState();
+                    renderTable();
+                    showToast(`تم تعميم الراتب (${formatNumber(targetSalary)} ${currentCurrency}) على جميع الأشهر بنجاح.`, 'success');
+                }
+            );
+        }
+
+        function clearExampleData() {
+            showConfirmModal(
+                'مسح المثال التوضيحي',
+                'سيتم تصفير بيانات المثال التوضيحي في شهر كانون الثاني لتبدأ بإدخال بياناتك الفعلية. هل تريد المتابعة؟',
+                () => {
+                    expensesData[0] = {
+                        month: MONTHS_LIST[0],
+                        salary: 0,
+                        shopping: 0,
+                        generator: 0,
+                        school: 0,
+                        internet: 0,
+                        notes: '',
+                        isExample: false
+                    };
+                    saveState();
+                    renderTable();
+                    showToast('تم مسح المثال التوضيحي بنجاح.', 'success');
+                }
+            );
+        }
+
+        function resetToDefaultData() {
+            showConfirmModal(
+                'إعادة ضبط البيانات الافتراضية',
+                'سيؤدي هذا الإجراء إلى حذف جميع تعديلاتك الحالية واستعادة البيانات الأصلية لملف الإكسل. هل أنت متأكد؟',
+                () => {
+                    expensesData = getDefaultData();
+                    saveState();
+                    renderTable();
+                    showToast('تمت استعادة البيانات الافتراضية بنجاح.', 'success');
+                }
+            );
+        }
+
+        // تصدير البيانات إلى ملف CSV متوافق تماماً مع Microsoft Excel باللغة العربية (UTF-8 BOM)
+        function exportToCSV() {
+            const headers = [
+                'الشهر',
+                `مبلغ الراتب (${currentCurrency})`,
+                `تسوق (${currentCurrency})`,
+                `مولد (${currentCurrency})`,
+                `أقساط المدرسة (${currentCurrency})`,
+                `إنترنت (${currentCurrency})`,
+                `إجمالي المصاريف الشهرية (${currentCurrency})`,
+                `المتبقي من الراتب (${currentCurrency})`,
+                'ملاحظات'
+            ];
+
+            let totSal = 0, totShop = 0, totGen = 0, totSch = 0, totNet = 0, totExp = 0, totRem = 0;
+
+            const rows = expensesData.map(r => {
+                const sal = Number(r.salary) || 0;
+                const shop = Number(r.shopping) || 0;
+                const gen = Number(r.generator) || 0;
+                const sch = Number(r.school) || 0;
+                const net = Number(r.internet) || 0;
+                const exp = shop + gen + sch + net;
+                const rem = sal - exp;
+
+                totSal += sal;
+                totShop += shop;
+                totGen += gen;
+                totSch += sch;
+                totNet += net;
+                totExp += exp;
+                totRem += rem;
+
+                const cleanNotes = `"${(r.notes || '').replace(/"/g, '""')}"`;
+                return [r.month, sal, shop, gen, sch, net, exp, rem, cleanNotes].join(',');
+            });
+
+            // إضافة صف المجموع السنوي
+            rows.push(['المجموع السنوي', totSal, totShop, totGen, totSch, totNet, totExp, totRem, '""'].join(','));
+
+            // إضافة BOM لدعم الحروف العربية في Excel بشكل سليم 100%
+            const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            const dateStr = new Date().toISOString().slice(0, 10);
+            link.setAttribute('download', `مصاريف_الراتب_السنوية_${dateStr}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showToast('تم تصدير ملف Excel (CSV) بنجاح!', 'success');
+        }
+
+        // ==========================================
+        // 8. إدارة النوافذ المنبثقة والإشعارات
+        // ==========================================
+        function openCurrencyModal() {
+            const modal = document.getElementById('currency-modal');
+            document.getElementById('custom-currency-input').value = currentCurrency;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeCurrencyModal() {
+            const modal = document.getElementById('currency-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function selectPresetCurrency(symbol) {
+            currentCurrency = symbol;
+            saveState();
+            updateCurrencyUI();
+            recalculateAll();
+            closeCurrencyModal();
+            showToast(`تم تغيير العملة إلى (${symbol})`, 'success');
+        }
+
+        function saveCustomCurrency() {
+            const val = document.getElementById('custom-currency-input').value.trim();
+            if (!val) {
+                showToast('يرجى إدخال رمز أو اسم العملة', 'warning');
+                return;
+            }
+            selectPresetCurrency(val);
+        }
+
+        function showConfirmModal(title, message, onConfirm) {
+            const modal = document.getElementById('confirm-modal');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').textContent = message;
+
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            const cancelBtn = document.getElementById('modal-cancel-btn');
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                confirmBtn.onclick = null;
+                cancelBtn.onclick = null;
+            };
+
+            confirmBtn.onclick = () => {
+                cleanup();
+                if (typeof onConfirm === 'function') onConfirm();
+            };
+
+            cancelBtn.onclick = cleanup;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const styles = {
+                success: 'bg-emerald-800 text-white border-emerald-700',
+                warning: 'bg-amber-800 text-white border-amber-700',
+                error: 'bg-rose-800 text-white border-rose-700',
+                info: 'bg-slate-800 text-white border-slate-700'
+            };
+
+            const icons = {
+                success: 'check-circle-2',
+                warning: 'alert-circle',
+                error: 'x-circle',
+                info: 'info'
+            };
+
+            toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-xs sm:text-sm font-semibold transform transition-all duration-300 translate-y-2 opacity-0 ${styles[type] || styles.info}`;
+            toast.innerHTML = `
+                <i data-lucide="${icons[type] || icons.info}" class="w-4 h-4 shrink-0"></i>
+                <span>${escapeHTML(message)}</span>
+            `;
+
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function escapeHTML(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // ==========================================
+        // 9. تهيئة التطبيق عند التحميل
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            updateCurrencyUI();
+            initCharts();
+            renderTable();
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>
